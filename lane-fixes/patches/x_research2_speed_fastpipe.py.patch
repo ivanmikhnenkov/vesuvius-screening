@@ -1,0 +1,10 @@
+--- a/x_research2/speed/fastpipe.py
++++ b/x_research2/speed/fastpipe.py
+@@ -26,6 +26,7 @@
+ 
+ W = Path('/home/liam/projects/vesuvius-work')
+ CK = {'rv2': W / 'models/community/reader-v2/reader-v2-step040000.pth', 'ft': W / 'models/ink9_ens/dn343ft.pth',
++      'rv3': W / 'models/community/reader-v3/reader-v3.pth', 'trace': W / 'models/community/trace/v3B_best.pth',
+       'dn': W / 'models/ink9_ens/dense_native-016000.rebuilt.pth'}
+ RECIPES = {
+     # PHerc0343 (Erwin) auc / d' / letters plain -> with --mask ; PHerc0841 auc / d'   (x_research2/speed recipes_eval.json)

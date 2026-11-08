@@ -1,0 +1,41 @@
+--- a/x_recipe_erwin/remote/erwin_data.sh
++++ b/x_recipe_erwin/remote/erwin_data.sh
+@@ -15,11 +15,26 @@
+ T=https://dl.ash2txt.org/datasets/spiral_datasets/$S/$VID/tracks; P=${S}_${VID}_surface_m7_L0_th0.2
+ if [ -z "${NOTRACKS:-}" ]; then   # NOTRACKS=1: tracks are extracted locally (scroll without published tracks)
+ cd $D/tracks; mkdir -p $P.dbm.vctracks
++getfull() {   # getfull URL FILE: resume until the size equals the server's Content-Length (a cut stream used to pass silently)
++  local want; want=$(curl -sI "$1" | tr -d '\r' | awk 'tolower($1)=="content-length:"{print $2}')
++  for t in 1 2 3 4 5 6 7 8; do
++    [ -n "$want" ] && [ -f "$2" ] && [ "$(stat -c %s "$2")" = "$want" ] && return 0
++    curl -sf --retry 3 -C - -o "$2" "$1" || sleep $((t * 5))
++  done
++  [ -n "$want" ] && [ "$(stat -c %s "$2" 2>/dev/null)" = "$want" ] || { echo "DOWNLOAD FAILED $1 ($(stat -c %s "$2" 2>/dev/null)/$want)"; return 1; }
++}
++if [ -n "${TRACKS_MIRROR:-}" ]; then   # an rsync mirror of the tracks (<mirror>/<scroll>/<volume>/), e.g. ~50 MB/s vs ~5 MB/s from the source
++  rsync -a ${TRACKS_MIRROR_SSH:+-e "$TRACKS_MIRROR_SSH"} \
++    $TRACKS_MIRROR/$S/$VID/$P.dbm.vctracks/ $P.dbm.vctracks/ 2>/dev/null \
++    && echo "tracks from the mirror" || echo "no mirrored tracks for $S; downloading"
++fi
++pids=()
+ for f in arclengths.f64 coordinates.i32 family_codes.i8 header.bin metadata.json offsets.i64 source_ids.u64 tortuosities.f64 z_bounds.i32; do
+-  [ -s $P.dbm.vctracks/$f ] || curl -sf -o $P.dbm.vctracks/$f $T/$P.dbm.vctracks/$f &
++  getfull $T/$P.dbm.vctracks/$f $P.dbm.vctracks/$f & pids+=($!)
+ done
+-[ -s $P.dbm.crossings.npz ] || curl -sf -o $P.dbm.crossings.npz $T/$P.dbm.crossings.npz &
+-wait
++# no published crossings cache: on 0175A (ACW) it failed to remap ("walk crossing partner is out of range") and the
++# fallback rebuild rejects mirrored coordinates; without it the fitter computes exact crossings itself in ~1 min
++for pid in "${pids[@]}"; do wait $pid || { echo "tracks download failed"; exit 1; }; done   # plain 'wait' returns 0 whatever failed
+ python3 - <<PY
+ import json, os, urllib.request
+ m = json.load(open('$P.dbm.vctracks/metadata.json')); name, size, mt = m['source_db_signature'][0]
+@@ -65,7 +80,7 @@
+ read A B < <(python3 -c "print(((($Z0-64)//2)//256*256-64)//128, ((($Z1+64)//2+255)//256*256+64)//128)")
+ for zi in $(seq $A $B); do aws s3 sync --no-sign-request --only-show-errors $CS/1/$zi $C/1/$zi & done; wait
+ if [ -f $D/SYN_NORMALS ] && [ ! -f $D/lasagna_inputs/.syn_done ] && [ -z "${SKIP_NORMALS:-}" ]; then   # SKIP_NORMALS: CPU/download-only prep
+-  $W/envs/vcpy/bin/python $X/tools/make_normals.py $M $D/lasagna_inputs --z $((Z0-128)) $((Z1+128)) --tile 512 > $D/make_normals.log 2>&1 && touch $D/lasagna_inputs/.syn_done
++  $W/envs/vcpy/bin/python $X/tools/make_normals.py https://vesuvius-challenge-open-data.s3.amazonaws.com/$SURF $D/lasagna_inputs --z $((Z0-128)) $((Z1+128)) --tile 192 --workers 16 > $D/make_normals.log 2>&1 && touch $D/lasagna_inputs/.syn_done
+   tail -1 $D/make_normals.log
+ fi
+ du -sh $D $M $C

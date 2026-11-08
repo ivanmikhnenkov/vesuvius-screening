@@ -1,0 +1,48 @@
+--- a/fl/remote/spiral/window_score.py
++++ b/fl/remote/spiral/window_score.py
+@@ -45,10 +45,10 @@
+ STEP = int(sys.argv[sys.argv.index('--step') + 1]) if '--step' in sys.argv else 1300
+ REDO = '--redo' in sys.argv          # recompute existing spectral_win.json
+ ALIGN_MIN = -99.0                    # angles for EVERY window (was >= 4.5): two-row text (1447 w058, 0841) scores ~0 and must still reach tri_rank's gates
+-for d in sorted(glob.glob(os.path.join(root, '*/'))):
++def one(d):
+     out = d + 'spectral_win.json'
+     if (os.path.exists(out) and not REDO) or not os.path.exists(d + 'done_d0') or 'skipped' in open(d + 'done_d0').read():
+-        continue
++        return
+     res, best = {}, (-9, None, None)
+     rdir = os.path.join(os.path.dirname(os.path.dirname(d.rstrip('/'))), 'renders', os.path.basename(d.rstrip('/')) + '.zarr')
+     ct = np.asarray(zarr.open(rdir, mode='r')['0'][15]).astype(np.float32) if os.path.exists(rdir) else None
+@@ -69,13 +69,13 @@
+             if (zz != 0).mean() < 0.3:
+                 continue
+             try:
+-                s = score(zz, qmask=qq).get('score')
++                sc = score(zz, qmask=qq); s = sc.get('score')      # one call: the alignment branch reuses it
+             except Exception:
+-                s = None
++                sc, s = None, None
+             if s is not None:
+                 if s >= ALIGN_MIN and ct is not None:
+                     try:
+-                        sc = score(zz, qmask=qq); cc = ct[:, x0:x0 + WIN]; vv = cc > 0
++                        cc = ct[:, x0:x0 + WIN]; vv = cc > 0
+                         if qq is not None:
+                             vv &= cv2.resize(qq.astype(np.uint8), (vv.shape[1], vv.shape[0]), interpolation=cv2.INTER_NEAREST) > 0
+                         al = alignment(cc, vv, sc['angle'])
+@@ -98,3 +98,15 @@
+     res['align'] = al_list
+     json.dump(res, open(out, 'w'))
+     print(os.path.basename(d.rstrip('/')), best, flush=True)
++
++
++if __name__ == '__main__':
++    dirs = sorted(glob.glob(os.path.join(root, '*/')))
++    procs = int(os.environ.get('WS_PROCS', '1'))     # windings are independent: WS_PROCS processes (set OMP_NUM_THREADS per process)
++    if procs > 1:
++        from multiprocessing import Pool
++        with Pool(procs) as pool:
++            pool.map(one, dirs, chunksize=1)
++    else:
++        for d in dirs:
++            one(d)

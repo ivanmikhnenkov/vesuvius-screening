@@ -1,0 +1,55 @@
+{
+ "seg": "w060",
+ "mask_px": 3231085,
+ "ink_frac": 0.2604,
+ "reader-v3_reverse": {
+  "auc": 0.7601,
+  "ap": 0.6051,
+  "false_ink_at_80": 0.4871
+ },
+ "trace_reverse": {
+  "auc": 0.7082,
+  "ap": 0.497,
+  "false_ink_at_80": 0.5615
+ },
+ "v8in_reverse": {
+  "auc": 0.81,
+  "ap": 0.6767,
+  "false_ink_at_80": 0.3844
+ },
+ "zmean_all_reverse": {
+  "auc": 0.8089,
+  "ap": 0.6501,
+  "false_ink_at_80": 0.3408
+ },
+ "zmean_reader-v3+trace_reverse": {
+  "auc": 0.75,
+  "ap": 0.5762,
+  "false_ink_at_80": 0.5107
+ },
+ "prod_reader-v3xtrace_reverse": {
+  "auc": 0.7506,
+  "ap": 0.577,
+  "false_ink_at_80": 0.5085
+ },
+ "zmean_reader-v3+v8in_reverse": {
+  "auc": 0.819,
+  "ap": 0.6851,
+  "false_ink_at_80": 0.3401
+ },
+ "prod_reader-v3xv8in_reverse": {
+  "auc": 0.8194,
+  "ap": 0.6845,
+  "false_ink_at_80": 0.3397
+ },
+ "zmean_trace+v8in_reverse": {
+  "auc": 0.8052,
+  "ap": 0.6386,
+  "false_ink_at_80": 0.3656
+ },
+ "prod_tracexv8in_reverse": {
+  "auc": 0.8071,
+  "ap": 0.6451,
+  "false_ink_at_80": 0.3652
+ }
+}

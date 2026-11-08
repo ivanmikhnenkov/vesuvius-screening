@@ -1,0 +1,41 @@
+--- a/x_vast_plan/lane_box.sh
++++ b/x_vast_plan/lane_box.sh
+@@ -87,6 +87,9 @@
+   }
+   getck $W/models/community/reader-v2/reader-v2-step040000.pth https://huggingface.co/domenicor046/reader-v2/resolve/main/reader-v2-step040000.pth \
+         654ec5acec2b6c4788d9cb326e2f0b8c2c730584949a934ef775db7f6ab5d3a6 || return 1
++  mkdir -p $W/models/community/reader-v3
++  getck $W/models/community/reader-v3/reader-v3.pth https://huggingface.co/domenicor046/reader-v3/resolve/main/reader-v3.pth \
++        ea405417450abd8ace1b8ff79ebce3adb646c5e48ab95da46844d77efe984d8a || return 1
+   getck $W/models/community/trace/v3B_best.pth https://github.com/Jashann/vesuvius-scrolling/releases/download/v1.0/v3B_best.pth \
+         812ffe2b42b3293974052ebbee60a0fe939ca2bfc3f03a517a0bc2e2339e5da2 || return 1
+   $W/envs/vcpy/bin/python -c "import torch;assert torch.cuda.is_available();print(torch.cuda.get_device_name(0))" >> $LANE/logs/setup.log 2>&1
+@@ -184,16 +187,23 @@
+   [ -n "${QUALITY_THR:-}" ] && export FL_QUALITY_THR=$QUALITY_THR                                  # --mask tile threshold (default 0.10)
+   $NICE $W/envs/vcpy/bin/python $P/ink_lane.py $LANE/renders $LANE/rv2 $UM --post-done $LANE/post.done --vram-gb $vram $face > $LANE/logs/ink.log 2>&1 & local ink=$!
+   rm -f $LANE/ink.done   # window_score is CPU-heavy (~3 min/winding at 4 threads): score inked windings while the rest render/ink
+-  ( while [ ! -f $LANE/ink.done ]; do OMP_NUM_THREADS=$(( TH > 3 ? TH / 2 : 1 )) $NICE $W/envs/vcpy/bin/python $W/fl/remote/spiral/window_score.py $LANE/rv2 \
++  ( while [ ! -f $LANE/ink.done ]; do OMP_NUM_THREADS=$(( TH > 3 ? TH / 2 / ${WS_PROCS:-1} : 1 )) $NICE $W/envs/vcpy/bin/python $W/fl/remote/spiral/window_score.py $LANE/rv2 \
+       >> $LANE/logs/window_score.log 2>&1; sleep 60; done ) & local sc=$!
+   local par=${POST_PAR:-$(( CORES >= 24 ? 3 : CORES >= 12 ? 2 : 1 ))}; [ -n "$DRY" ] && par=1
+   export -f one_winding cache_trim; export LANE DS S Z0 Z1 W V VOL NICE CACHE_GB
+-  while read w; do echo "$w $tag"; done < $o/windings.txt | xargs -P $par -L 1 bash -c 'one_winding "$0" "$1"; cache_trim'
++  for pass in 1 2; do   # pass 2 retries what pass 1 left (one_winding skips finished renders)
++    while read w; do echo "$w $tag"; done < $o/windings.txt | xargs -P $par -L 1 bash -c 'one_winding "$0" "$1"; cache_trim'
++  done
+   touch $LANE/post.done; wait $ink; touch $LANE/ink.done; wait $sc   # score loop finishes its current pass, never killed mid-write
+-  local nr=$(ls -d $LANE/renders/*.zarr 2>/dev/null | wc -l) ni=$(ls $LANE/rv2/*/done_d0 2>/dev/null | wc -l)
+-  echo "rendered $nr inked $ni" >> $LANE/logs/lane.log; [ $ni -ge 1 ] && [ $(( ni * 10 )) -ge $(( nr * 8 )) ]   # tolerate a few ink failures
++  local np=0 nr=0 ni=0 miss="" w   # count against the PLANNED windings: one_winding returns 0 on no snap / failed flatten / failed render
++  for w in $(cat $o/windings.txt); do
++    np=$((np + 1)); [ -f $LANE/renders/${tag}_$w.zarr/.done ] && nr=$((nr + 1))
++    if [ -f $LANE/rv2/${tag}_$w/done_d0 ]; then ni=$((ni + 1)); else miss="$miss $w"; fi
++  done
++  echo "planned $np rendered $nr inked $ni${miss:+ missing:$miss}" >> $LANE/logs/lane.log
++  [ $ni -ge 1 ] && [ $(( ni * 10 )) -ge $(( np * 8 )) ]   # tolerate a few failures; re-running lane_box.sh retries the missing
+ }
+-s_score() { OMP_NUM_THREADS=$TH $NICE $W/envs/vcpy/bin/python $W/fl/remote/spiral/window_score.py $LANE/rv2 > $LANE/logs/window_score.log 2>&1; }
++s_score() { OMP_NUM_THREADS=$(( TH / ${WS_PROCS:-1} > 0 ? TH / ${WS_PROCS:-1} : 1 )) $NICE $W/envs/vcpy/bin/python $W/fl/remote/spiral/window_score.py $LANE/rv2 > $LANE/logs/window_score.log 2>&1; }
+ s_triage() {
+   local tag=$(cat $LANE/best_tag)
+   $NICE $W/envs/vcpy/bin/python $W/fl/scripts/tri_rank.py $LANE/rv2 --tag $tag --min -99 --um $UM --flat $LANE/out/$tag/flat \

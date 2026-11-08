@@ -1,0 +1,17 @@
+--- a/x_vast_plan/ink_lane.py
++++ b/x_vast_plan/ink_lane.py
+@@ -61,9 +61,13 @@
+                           hec_depths=[0], rv2_windows=[0], tta='none', v8=False)
+ models, weights = (['hec', 'trace'], {'hec': 1.0, 'trace': 1.0, 'rv2': 0.0}) if a.um > 9 else \
+                   (['hec', 'rv2', 'trace'], {'hec': 1.0, 'rv2': 1.0, 'trace': 0.0})
++if os.environ.get('INK_MODELS'):   # e.g. "hec:1,rv3:1,trace:0" (weight 0: run and save the map, leave it out of the fused z)
++    weights = {k: float(v) for k, v in (t.split(':') for t in os.environ['INK_MODELS'].split(','))}
++    models = list(weights)
++    FP.RECIPES['all3'] = dict(FP.RECIPES['all3'], models=models, weights=weights)
+ pipe = FP.Pipe('all3', vram_gb=a.vram_gb)
+ pipe.cfg['models'], pipe.cfg['weights'] = models, weights
+-_cap = int(os.environ.get('INK_MAX_BATCH') or 0)       # small-VRAM runs (local dry run on a shared GPU); boxes leave it unset
++_cap = int(os.environ.get('INK_MAX_BATCH') or (8 if 'rv3' in models else 0))   # Reader v3 tiles are 384 px: 32 of them risk OOM on 24 GB       # small-VRAM runs (local dry run on a shared GPU); boxes leave it unset
+ if _cap:
+     for _m in pipe.M.values():
+         def _capped(*args, _f=_m.predict, **kw):
